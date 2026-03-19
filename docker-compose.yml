@@ -1,0 +1,11 @@
+services:
+  tank:
+    build: .
+    container_name: tank
+    restart: unless-stopped
+    ports:
+      - "8776:8776"
+    mem_limit: 64m
+    cpus: 0.2
+    environment:
+      - PORT=8776

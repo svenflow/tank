@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tank Wars</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Press Start 2P', 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  @font-face {
+    font-family: 'Press Start 2P';
+    src: url('https://fonts.gstatic.com/s/pressstart2p/v15/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff2') format('woff2');
+    font-display: swap;
+  }
+  h1 {
+    font-size: 1.2rem;
+    margin: 12px 0 8px;
+    background: linear-gradient(90deg, #4ade80, #60a5fa, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  #game-container {
+    position: relative;
+    border: 2px solid #333;
+    border-radius: 4px;
+    background: #000;
+  }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+  }
+  #ui-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    background: #111;
+    border: 2px solid #333;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    width: 800px;
+    font-size: 0.55rem;
+    flex-wrap: wrap;
+  }
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .control-group label {
+    color: #888;
+    min-width: 42px;
+  }
+  .control-group input[type=range] {
+    width: 100px;
+    accent-color: #4ade80;
+  }
+  .control-group .value {
+    color: #4ade80;
+    min-width: 32px;
+    text-align: right;
+  }
+  #fire-btn {
+    background: #dc2626;
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    font-family: inherit;
+    font-size: 0.6rem;
+    cursor: pointer;
+    border-radius: 3px;
+    letter-spacing: 0.1em;
+    transition: all 0.15s;
+  }
+  #fire-btn:hover:not(:disabled) { background: #ef4444; transform: scale(1.05); }
+  #fire-btn:disabled { background: #444; cursor: default; color: #888; }
+  #wind-display {
+    color: #60a5fa;
+    margin-left: auto;
+  }
+  #status-bar {
+    width: 800px;
+    padding: 6px 16px;
+    background: #0d0d1a;
+    border: 2px solid #333;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    font-size: 0.5rem;
+    color: #666;
+    display: flex;
+    justify-content: space-between;
+  }
+  /* Lobby overlay */
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  #overlay.hidden { display: none; }
+  .overlay-box {
+    background: #1a1a2e;
+    border: 2px solid #4ade80;
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+  }
+  .overlay-box h2 {
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+    color: #4ade80;
+  }
+  .overlay-box input {
+    background: #0a0a1a;
+    border: 2px solid #333;
+    color: #e0e0e0;
+    padding: 10px 14px;
+    font-family: inherit;
+    font-size: 0.6rem;
+    width: 100%;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .overlay-box input:focus { outline: none; border-color: #4ade80; }
+  .overlay-box button {
+    background: #4ade80;
+    color: #0a0a1a;
+    border: none;
+    padding: 10px 24px;
+    font-family: inherit;
+    font-size: 0.6rem;
+    cursor: pointer;
+    border-radius: 4px;
+    font-weight: bold;
+  }
+  .overlay-box button:hover { background: #22c55e; }
+  .player-list {
+    margin: 16px 0;
+    text-align: left;
+    font-size: 0.5rem;
+  }
+  .player-list div {
+    padding: 4px 8px;
+    margin: 4px 0;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.05);
+  }
+  .player-list .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  #chat-log {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 250px;
+    max-height: 120px;
+    overflow-y: auto;
+    padding: 4px 8px;
+    font-size: 0.4rem;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #chat-log div {
+    background: rgba(0,0,0,0.6);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .winner-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    z-index: 50;
+  }
+  .winner-overlay .name { font-size: 1.2rem; margin: 12px 0; }
+  .winner-overlay button {
+    margin-top: 16px;
+    background: #4ade80;
+    color: #0a0a1a;
+    border: none;
+    padding: 10px 24px;
+    font-family: inherit;
+    font-size: 0.6rem;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<h1>TANK WARS</h1>
+
+<div id="game-container">
+  <canvas id="canvas" width="800" height="600"></canvas>
+  <div id="chat-log"></div>
+</div>
+
+<div id="ui-bar">
+  <div class="control-group">
+    <label>ANGLE</label>
+    <input type="range" id="angle-slider" min="5" max="175" value="45" step="1">
+    <span class="value" id="angle-val">45°</span>
+  </div>
+  <div class="control-group">
+    <label>POWER</label>
+    <input type="range" id="power-slider" min="10" max="100" value="50" step="1">
+    <span class="value" id="power-val">50%</span>
+  </div>
+  <button id="fire-btn" disabled>FIRE</button>
+  <div id="wind-display">WIND: ---</div>
+</div>
+
+<div id="status-bar">
+  <span id="turn-info">Waiting for players...</span>
+  <span id="alive-info"></span>
+</div>
+
+<!-- Lobby overlay -->
+<div id="overlay">
+  <div class="overlay-box" id="join-screen">
+    <h2>TANK WARS</h2>
+    <input type="text" id="name-input" placeholder="Enter your name" maxlength="16" autofocus>
+    <br>
+    <button id="join-btn">JOIN GAME</button>
+  </div>
+  <div class="overlay-box hidden" id="lobby-screen">
+    <h2>WAITING FOR PLAYERS</h2>
+    <div class="player-list" id="player-list"></div>
+    <button id="start-btn" class="hidden">START GAME</button>
+    <p style="font-size:0.45rem; color:#666; margin-top:12px">Waiting for host to start...</p>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// TANK WARS CLIENT
+// ============================================================
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 600;
+
+// UI elements
+const overlay = document.getElementById('overlay');
+const joinScreen = document.getElementById('join-screen');
+const lobbyScreen = document.getElementById('lobby-screen');
+const nameInput = document.getElementById('name-input');
+const joinBtn = document.getElementById('join-btn');
+const startBtn = document.getElementById('start-btn');
+const playerListEl = document.getElementById('player-list');
+const angleSlider = document.getElementById('angle-slider');
+const powerSlider = document.getElementById('power-slider');
+const angleVal = document.getElementById('angle-val');
+const powerVal = document.getElementById('power-val');
+const fireBtn = document.getElementById('fire-btn');
+const windDisplay = document.getElementById('wind-display');
+const turnInfo = document.getElementById('turn-info');
+const aliveInfo = document.getElementById('alive-info');
+const chatLog = document.getElementById('chat-log');
+
+// State
+let ws = null;
+let myId = '';
+let isHost = false;
+let terrain = [];
+let players = [];
+let wind = 0;
+let currentTurn = '';
+let phase = 'lobby'; // lobby, playing, animating, gameover
+let myTurn = false;
+
+// Animation state
+let animating = false;
+let animTrajectory = [];
+let animFrame = 0;
+let animImpact = null;
+let explosionFrame = -1;
+let explosionPos = null;
+const EXPLOSION_FRAMES = 20;
+
+// ============================================================
+// WEBSOCKET
+// ============================================================
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const basePath = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
+  ws = new WebSocket(proto + '//' + location.host + basePath + 'ws');
+
+  ws.onopen = () => console.log('Connected');
+  ws.onclose = () => {
+    console.log('Disconnected');
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    handleMessage(msg);
+  };
+}
+
+function send(msg) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+
+// ============================================================
+// MESSAGE HANDLING
+// ============================================================
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'welcome':
+      myId = msg.playerId;
+      isHost = msg.isHost;
+      players = msg.players;
+      showLobby();
+      break;
+
+    case 'lobby_state':
+      players = msg.players;
+      if (msg.hostId) isHost = (msg.hostId === myId);
+      if (msg.phase === 'waiting') {
+        phase = 'lobby';
+        showLobby();
+      }
+      updatePlayerList();
+      break;
+
+    case 'game_start':
+      terrain = msg.terrain;
+      players = msg.players;
+      wind = msg.wind;
+      currentTurn = msg.currentTurn;
+      phase = 'playing';
+      overlay.classList.add('hidden');
+      removeWinnerOverlay();
+      updateUI();
+      render();
+      break;
+
+    case 'turn_start':
+      currentTurn = msg.currentTurn;
+      wind = msg.wind;
+      myTurn = (currentTurn === myId);
+      phase = 'playing';
+      updateUI();
+      render();
+      break;
+
+    case 'aim_update':
+      const aimP = players.find(p => p.id === msg.playerId);
+      if (aimP) {
+        aimP.angle = msg.angle;
+        aimP.power = msg.power;
+        render();
+      }
+      break;
+
+    case 'fire':
+      players = msg.players;
+      phase = 'animating';
+      myTurn = false;
+      fireBtn.disabled = true;
+      animateProjectile(msg.trajectory, msg.impactX, msg.impactY, msg.explosionRadius, () => {
+        terrain = msg.terrain;
+        players = msg.players;
+        render();
+      });
+      break;
+
+    case 'game_over':
+      phase = 'gameover';
+      players = msg.players;
+      render();
+      showWinner(msg.winner);
+      break;
+
+    case 'player_left':
+      players = msg.players;
+      render();
+      break;
+
+    case 'chat':
+      addChatMessage(msg.name, msg.text);
+      break;
+  }
+}
+
+// ============================================================
+// UI
+// ============================================================
+
+function showLobby() {
+  overlay.classList.remove('hidden');
+  joinScreen.classList.add('hidden');
+  lobbyScreen.classList.remove('hidden');
+  updatePlayerList();
+}
+
+function updatePlayerList() {
+  playerListEl.innerHTML = '';
+  players.forEach(p => {
+    const div = document.createElement('div');
+    div.innerHTML = `<span class="dot" style="background:${p.color}"></span>${p.name}${p.isAI ? ' (AI)' : ''}${p.id === myId ? ' (you)' : ''}`;
+    playerListEl.appendChild(div);
+  });
+  if (isHost) {
+    startBtn.classList.remove('hidden');
+    startBtn.textContent = players.length < 2 ? 'START (vs AI)' : `START (${players.length} players)`;
+  } else {
+    startBtn.classList.add('hidden');
+  }
+}
+
+function updateUI() {
+  const currentPlayer = players.find(p => p.id === currentTurn);
+  myTurn = (currentTurn === myId) && phase === 'playing';
+
+  angleSlider.disabled = !myTurn;
+  powerSlider.disabled = !myTurn;
+  fireBtn.disabled = !myTurn;
+
+  if (myTurn) {
+    const me = players.find(p => p.id === myId);
+    if (me) {
+      angleSlider.value = me.angle;
+      powerSlider.value = me.power;
+      angleVal.textContent = me.angle + '°';
+      powerVal.textContent = me.power + '%';
+    }
+  }
+
+  // Wind display
+  if (wind === 0) {
+    windDisplay.textContent = 'WIND: CALM';
+  } else {
+    const arrow = wind > 0 ? '→'.repeat(Math.min(3, Math.ceil(Math.abs(wind) / 4))) : '←'.repeat(Math.min(3, Math.ceil(Math.abs(wind) / 4)));
+    windDisplay.textContent = `WIND: ${arrow} ${Math.abs(wind)}`;
+  }
+  windDisplay.style.color = Math.abs(wind) > 6 ? '#f472b6' : '#60a5fa';
+
+  // Turn info
+  if (currentPlayer) {
+    turnInfo.innerHTML = myTurn
+      ? '<span style="color:#4ade80">YOUR TURN</span>'
+      : `<span style="color:${currentPlayer.color}">${currentPlayer.name}</span>'s turn`;
+  }
+
+  // Alive count
+  const alive = players.filter(p => p.hp > 0).length;
+  aliveInfo.textContent = `${alive} alive`;
+}
+
+function addChatMessage(name, text) {
+  const div = document.createElement('div');
+  div.innerHTML = `<span style="color:#888">${name}:</span> ${text}`;
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  // Limit to 20 messages
+  while (chatLog.children.length > 20) chatLog.removeChild(chatLog.firstChild);
+}
+
+function showWinner(winner) {
+  removeWinnerOverlay();
+  const div = document.createElement('div');
+  div.className = 'winner-overlay';
+  div.id = 'winner-overlay';
+  if (winner) {
+    div.innerHTML = `
+      <div>🏆 WINNER 🏆</div>
+      <div class="name" style="color:${winner.color}">${winner.name}</div>
+      <div style="font-size:0.5rem; color:#888">Destroyed all enemies!</div>
+    `;
+  } else {
+    div.innerHTML = `<div>DRAW!</div><div style="font-size:0.5rem; color:#888; margin-top:8px">Everyone is dead...</div>`;
+  }
+  document.getElementById('game-container').appendChild(div);
+}
+
+function removeWinnerOverlay() {
+  const el = document.getElementById('winner-overlay');
+  if (el) el.remove();
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  drawSky();
+  if (terrain.length > 0) {
+    drawTerrain();
+    drawTanks();
+  }
+}
+
+function drawSky() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0a2e');
+  grad.addColorStop(0.4, '#1a1a4e');
+  grad.addColorStop(0.7, '#2a3a6e');
+  grad.addColorStop(1, '#4a6a8e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  for (let i = 0; i < 40; i++) {
+    // Deterministic stars based on index
+    const sx = ((i * 137 + 31) % W);
+    const sy = ((i * 97 + 13) % (H * 0.4));
+    ctx.fillRect(sx, sy, 1, 1);
+  }
+}
+
+function drawTerrain() {
+  // Main terrain fill
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let x = 0; x < terrain.length; x++) {
+    ctx.lineTo(x, terrain[x]);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+
+  const tGrad = ctx.createLinearGradient(0, 200, 0, H);
+  tGrad.addColorStop(0, '#5a3a1a');
+  tGrad.addColorStop(0.3, '#4a2a10');
+  tGrad.addColorStop(1, '#2a1a08');
+  ctx.fillStyle = tGrad;
+  ctx.fill();
+
+  // Grass line on top
+  ctx.beginPath();
+  ctx.moveTo(0, terrain[0]);
+  for (let x = 1; x < terrain.length; x++) {
+    ctx.lineTo(x, terrain[x]);
+  }
+  ctx.strokeStyle = '#2d8f2d';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawTanks() {
+  players.forEach(p => {
+    if (p.hp <= 0) {
+      drawDeadTank(p);
+      return;
+    }
+    drawTank(p);
+    drawHPBar(p);
+    drawNameTag(p);
+  });
+}
+
+function drawTank(p) {
+  const x = p.x;
+  const y = p.y;
+
+  // Treads
+  ctx.fillStyle = darken(p.color, 0.4);
+  roundRect(ctx, x - 13, y - 4, 26, 6, 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = p.color;
+  roundRect(ctx, x - 10, y - 12, 20, 9, 2);
+  ctx.fill();
+
+  // Turret dome
+  ctx.beginPath();
+  ctx.arc(x, y - 12, 6, Math.PI, 0);
+  ctx.fillStyle = lighten(p.color, 0.2);
+  ctx.fill();
+
+  // Barrel
+  const rad = (p.angle * Math.PI) / 180;
+  const barrelLen = 20;
+  const dir = p.facingRight ? 1 : -1;
+  const bx = x + Math.cos(rad) * barrelLen * dir;
+  const by = y - 12 - Math.sin(rad) * barrelLen;
+  ctx.strokeStyle = darken(p.color, 0.3);
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 12);
+  ctx.lineTo(bx, by);
+  ctx.stroke();
+
+  // Highlight if current turn
+  if (p.id === currentTurn && phase === 'playing') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(x, y - 8, 22, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawDeadTank(p) {
+  const x = p.x;
+  const y = p.y;
+  ctx.globalAlpha = 0.4;
+  ctx.fillStyle = '#555';
+  roundRect(ctx, x - 13, y - 4, 26, 6, 2);
+  ctx.fill();
+  ctx.fillStyle = '#444';
+  roundRect(ctx, x - 10, y - 10, 20, 7, 2);
+  ctx.fill();
+  // X mark
+  ctx.strokeStyle = '#f44';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 6, y - 14);
+  ctx.lineTo(x + 6, y - 6);
+  ctx.moveTo(x + 6, y - 14);
+  ctx.lineTo(x - 6, y - 6);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawHPBar(p) {
+  const x = p.x;
+  const y = p.y - 22;
+  const w = 30;
+  const h = 4;
+  const pct = p.hp / 100;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(x - w/2 - 1, y - 1, w + 2, h + 2);
+
+  const color = pct > 0.5 ? '#4ade80' : pct > 0.25 ? '#facc15' : '#ef4444';
+  ctx.fillStyle = color;
+  ctx.fillRect(x - w/2, y, w * pct, h);
+}
+
+function drawNameTag(p) {
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = p.id === currentTurn ? '#fff' : 'rgba(255,255,255,0.5)';
+  ctx.fillText(p.name, p.x, p.y - 28);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function darken(hex, amount) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.floor(r * (1 - amount))},${Math.floor(g * (1 - amount))},${Math.floor(b * (1 - amount))})`;
+}
+
+function lighten(hex, amount) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.min(255, Math.floor(r + (255 - r) * amount))},${Math.min(255, Math.floor(g + (255 - g) * amount))},${Math.min(255, Math.floor(b + (255 - b) * amount))})`;
+}
+
+// ============================================================
+// ANIMATION
+// ============================================================
+
+function animateProjectile(trajectory, impactX, impactY, explosionRadius, onDone) {
+  animating = true;
+  animTrajectory = trajectory;
+  animFrame = 0;
+  animImpact = impactX >= 0 ? { x: impactX, y: impactY, radius: explosionRadius } : null;
+  explosionFrame = -1;
+  explosionPos = null;
+
+  // Skip frames for long trajectories to keep animation snappy
+  const skip = trajectory.length > 200 ? 3 : trajectory.length > 100 ? 2 : 1;
+
+  function step() {
+    if (explosionFrame >= 0) {
+      // Explosion animation
+      render();
+      drawExplosion(explosionPos.x, explosionPos.y, explosionPos.radius, explosionFrame / EXPLOSION_FRAMES);
+      explosionFrame++;
+      if (explosionFrame > EXPLOSION_FRAMES) {
+        animating = false;
+        onDone();
+        return;
+      }
+      requestAnimationFrame(step);
+      return;
+    }
+
+    if (animFrame >= animTrajectory.length) {
+      // Trajectory done — start explosion if hit
+      if (animImpact) {
+        explosionPos = animImpact;
+        explosionFrame = 0;
+        requestAnimationFrame(step);
+      } else {
+        animating = false;
+        onDone();
+      }
+      return;
+    }
+
+    render();
+
+    // Draw trail
+    const trailLen = 6;
+    for (let i = Math.max(0, animFrame - trailLen); i <= animFrame; i++) {
+      const pt = animTrajectory[i];
+      const alpha = 1 - (animFrame - i) / (trailLen + 1);
+      const size = 2 + alpha * 2;
+      ctx.beginPath();
+      ctx.arc(pt[0], pt[1], size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 200, 50, ${alpha * 0.8})`;
+      ctx.fill();
+    }
+
+    // Draw projectile
+    const pt = animTrajectory[animFrame];
+    ctx.beginPath();
+    ctx.arc(pt[0], pt[1], 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(pt[0], pt[1], 5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,200,50,0.3)';
+    ctx.fill();
+
+    animFrame += skip;
+    requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
+}
+
+function drawExplosion(x, y, radius, progress) {
+  const r = radius * (0.3 + progress * 0.7);
+
+  // Outer glow
+  const glowGrad = ctx.createRadialGradient(x, y, 0, x, y, r * 1.5);
+  glowGrad.addColorStop(0, `rgba(255, 200, 50, ${0.4 * (1 - progress)})`);
+  glowGrad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+  ctx.beginPath();
+  ctx.arc(x, y, r * 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = glowGrad;
+  ctx.fill();
+
+  // Main explosion
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+  if (progress < 0.4) {
+    grad.addColorStop(0, `rgba(255, 255, 200, ${1 - progress})`);
+    grad.addColorStop(0.5, `rgba(255, 150, 0, ${0.8 - progress})`);
+    grad.addColorStop(1, `rgba(200, 50, 0, ${0.6 - progress})`);
+  } else {
+    const fade = (progress - 0.4) / 0.6;
+    grad.addColorStop(0, `rgba(150, 100, 50, ${0.5 * (1 - fade)})`);
+    grad.addColorStop(1, `rgba(80, 80, 80, ${0.3 * (1 - fade)})`);
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Particles
+  if (progress < 0.6) {
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + progress * 2;
+      const dist = r * (0.5 + progress * 1.2);
+      const px = x + Math.cos(angle) * dist;
+      const py = y + Math.sin(angle) * dist;
+      const pSize = 2 * (1 - progress);
+      ctx.beginPath();
+      ctx.arc(px, py, pSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, ${150 + Math.random() * 100}, 0, ${0.8 * (1 - progress)})`;
+      ctx.fill();
+    }
+  }
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+
+joinBtn.onclick = () => {
+  const name = nameInput.value.trim() || 'Player';
+  connect();
+  // Wait for connection then join
+  const waitForOpen = setInterval(() => {
+    if (ws && ws.readyState === 1) {
+      clearInterval(waitForOpen);
+      send({ type: 'join', name });
+    }
+  }, 100);
+};
+
+nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') joinBtn.click();
+});
+
+startBtn.onclick = () => {
+  send({ type: 'start_game' });
+};
+
+angleSlider.oninput = () => {
+  angleVal.textContent = angleSlider.value + '°';
+  if (myTurn) {
+    const me = players.find(p => p.id === myId);
+    if (me) me.angle = parseInt(angleSlider.value);
+    send({ type: 'set_aim', angle: parseInt(angleSlider.value), power: parseInt(powerSlider.value) });
+    render();
+  }
+};
+
+powerSlider.oninput = () => {
+  powerVal.textContent = powerSlider.value + '%';
+  if (myTurn) {
+    const me = players.find(p => p.id === myId);
+    if (me) me.power = parseInt(powerSlider.value);
+    send({ type: 'set_aim', angle: parseInt(angleSlider.value), power: parseInt(powerSlider.value) });
+    render();
+  }
+};
+
+fireBtn.onclick = () => {
+  if (myTurn) {
+    send({ type: 'fire' });
+    fireBtn.disabled = true;
+    myTurn = false;
+  }
+};
+
+// Keyboard controls
+document.addEventListener('keydown', (e) => {
+  if (!myTurn || phase !== 'playing') return;
+  if (document.activeElement === nameInput) return;
+
+  switch (e.key) {
+    case 'ArrowLeft':
+      angleSlider.value = Math.min(175, parseInt(angleSlider.value) + 2);
+      angleSlider.oninput();
+      e.preventDefault();
+      break;
+    case 'ArrowRight':
+      angleSlider.value = Math.max(5, parseInt(angleSlider.value) - 2);
+      angleSlider.oninput();
+      e.preventDefault();
+      break;
+    case 'ArrowUp':
+      powerSlider.value = Math.min(100, parseInt(powerSlider.value) + 2);
+      powerSlider.oninput();
+      e.preventDefault();
+      break;
+    case 'ArrowDown':
+      powerSlider.value = Math.max(10, parseInt(powerSlider.value) - 2);
+      powerSlider.oninput();
+      e.preventDefault();
+      break;
+    case ' ':
+      fireBtn.click();
+      e.preventDefault();
+      break;
+  }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+
+// Draw initial screen
+drawSky();
+ctx.font = '12px monospace';
+ctx.textAlign = 'center';
+ctx.fillStyle = '#666';
+ctx.fillText('Enter your name to join', W / 2, H / 2);
+</script>
+</body>
+</html>
