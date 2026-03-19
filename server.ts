@@ -19,9 +19,23 @@ const MAX_PLAYERS = 6;
 const TURN_TIMEOUT = 30_000;
 const AI_DELAY = 1200;
 const GRAVITY = 400;
-const EXPLOSION_RADIUS = 30;
-const MAX_DAMAGE = 50;
 const STARTING_HP = 100;
+const MAX_ROUNDS = 3;
+
+// --- Weapon Definitions ---
+interface WeaponDef {
+  name: string;
+  radius: number;
+  damage: number;
+  projectiles: number;
+  spreadAngle: number; // degrees offset per sub-projectile
+}
+
+const WEAPONS: Record<string, WeaponDef> = {
+  standard: { name: 'standard', radius: 30, damage: 50, projectiles: 1, spreadAngle: 0 },
+  big:      { name: 'big',      radius: 55, damage: 70, projectiles: 1, spreadAngle: 0 },
+  spread:   { name: 'spread',   radius: 20, damage: 30, projectiles: 3, spreadAngle: 10 },
+};
 
 // --- Types ---
 
@@ -36,10 +50,12 @@ interface Player {
   power: number;
   isAI: boolean;
   facingRight: boolean;
+  weapon: string;
 }
 
 interface Lobby {
   id: string;
+  code: string;
   players: Map<string, Player>;
   sockets: Map<string, ServerWebSocket<UserData>>;
   terrain: number[];
@@ -49,6 +65,9 @@ interface Lobby {
   phase: "waiting" | "playing" | "gameover";
   hostId: string;
   turnTimer: ReturnType<typeof setTimeout> | null;
+  round: number;
+  maxRounds: number;
+  scores: Map<string, number>;
 }
 
 interface UserData {
@@ -69,6 +88,18 @@ const AI_NAMES = ["Sarge", "Blitz", "Gunner", "Bomber", "Scout", "Tank-AI"];
 
 // --- Static files ---
 const indexHtml = readFileSync(join(import.meta.dir, "public", "index.html"), "utf-8");
+
+// --- Room Code Generation ---
+function generateRoomCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  // Ensure uniqueness
+  if (lobbies.has(code)) return generateRoomCode();
+  return code;
+}
 
 // --- Terrain Generation (Midpoint Displacement) ---
 function generateTerrain(): number[] {
@@ -160,15 +191,15 @@ function destroyTerrain(terrain: number[], ix: number, iy: number, radius: numbe
 }
 
 // --- Damage ---
-function calculateDamage(players: Map<string, Player>, ix: number, iy: number, shooterId: string): Map<string, number> {
+function calculateDamage(players: Map<string, Player>, ix: number, iy: number, shooterId: string, radius: number, maxDamage: number): Map<string, number> {
   const damages = new Map<string, number>();
   for (const [id, p] of players) {
     if (p.hp <= 0) continue;
     const dist = Math.sqrt((p.x - ix) ** 2 + (p.y - iy) ** 2);
-    if (dist < EXPLOSION_RADIUS) {
-      const dmg = Math.floor(MAX_DAMAGE * (1 - dist / EXPLOSION_RADIUS));
+    if (dist < radius) {
+      const dmg = Math.floor(maxDamage * (1 - dist / radius));
       if (dmg > 0) {
-        damages.set(id, dmg);
+        damages.set(id, (damages.get(id) || 0) + dmg);
         p.hp = Math.max(0, p.hp - dmg);
       }
     }
@@ -220,17 +251,25 @@ function computeAIShot(ai: Player, lobby: Lobby): { angle: number; power: number
 }
 
 // --- Lobby Management ---
-function findOrCreateLobby(): Lobby {
-  // Find a lobby in waiting phase with room
-  for (const [, lobby] of lobbies) {
-    if (lobby.phase === "waiting" && lobby.players.size < MAX_PLAYERS) {
-      return lobby;
+function findOrCreateLobby(roomCode?: string): Lobby {
+  if (roomCode) {
+    const existing = lobbies.get(roomCode);
+    if (existing && existing.phase === "waiting" && existing.players.size < MAX_PLAYERS) {
+      return existing;
+    }
+    // Create with this code if not found or not joinable
+    if (!existing) {
+      return createLobby(roomCode);
     }
   }
-  // Create new
-  const id = `lobby_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  // Create new with random code
+  return createLobby(generateRoomCode());
+}
+
+function createLobby(code: string): Lobby {
   const lobby: Lobby = {
-    id,
+    id: code,
+    code,
     players: new Map(),
     sockets: new Map(),
     terrain: [],
@@ -240,8 +279,11 @@ function findOrCreateLobby(): Lobby {
     phase: "waiting",
     hostId: "",
     turnTimer: null,
+    round: 0,
+    maxRounds: MAX_ROUNDS,
+    scores: new Map(),
   };
-  lobbies.set(id, lobby);
+  lobbies.set(code, lobby);
   return lobby;
 }
 
@@ -267,7 +309,12 @@ function getPlayersArray(lobby: Lobby): object[] {
     x: p.x, y: p.y, hp: p.hp,
     angle: p.angle, power: p.power,
     isAI: p.isAI, facingRight: p.facingRight,
+    weapon: p.weapon,
   }));
+}
+
+function getScoresObject(lobby: Lobby): Record<string, number> {
+  return Object.fromEntries(lobby.scores);
 }
 
 // --- Game Flow ---
@@ -288,10 +335,21 @@ function startGame(lobby: Lobby) {
         angle: 45, power: 50,
         isAI: true,
         facingRight: true,
+        weapon: 'standard',
       };
       lobby.players.set(aiId, ai);
     }
   }
+
+  // Initialize scores for all players if first round
+  if (lobby.round === 0) {
+    lobby.scores.clear();
+    for (const [id] of lobby.players) {
+      lobby.scores.set(id, 0);
+    }
+  }
+
+  lobby.round++;
 
   // Generate terrain
   lobby.terrain = generateTerrain();
@@ -306,6 +364,8 @@ function startGame(lobby: Lobby) {
     p.x = Math.round(spacing * (i + 1));
     p.y = lobby.terrain[Math.floor(p.x)];
     p.facingRight = p.x < centerX;
+    p.hp = STARTING_HP;
+    p.weapon = 'standard';
   }
 
   // Set turn order (left to right)
@@ -323,6 +383,9 @@ function startGame(lobby: Lobby) {
     players: getPlayersArray(lobby),
     wind: lobby.wind,
     currentTurn: lobby.turnOrder[0],
+    round: lobby.round,
+    maxRounds: lobby.maxRounds,
+    scores: getScoresObject(lobby),
   });
 
   startTurn(lobby);
@@ -336,17 +399,62 @@ function startTurn(lobby: Lobby) {
   if (alive.length <= 1) {
     lobby.phase = "gameover";
     if (lobby.turnTimer) clearTimeout(lobby.turnTimer);
+
+    // Increment winner's score
+    const winner = alive.length === 1 ? alive[0] : null;
+    if (winner) {
+      lobby.scores.set(winner.id, (lobby.scores.get(winner.id) || 0) + 1);
+    }
+
+    const isFinalRound = lobby.round >= lobby.maxRounds;
+
+    // Determine match winner if final round
+    let matchWinner: { id: string; name: string; color: string } | null = null;
+    if (isFinalRound) {
+      let bestScore = -1;
+      let bestId = '';
+      for (const [id, score] of lobby.scores) {
+        if (score > bestScore) {
+          bestScore = score;
+          bestId = id;
+        }
+      }
+      if (bestId) {
+        const p = lobby.players.get(bestId);
+        if (p) {
+          matchWinner = { id: p.id, name: p.name, color: p.color };
+        }
+      }
+    }
+
     broadcast(lobby, {
       type: "game_over",
-      winner: alive.length === 1 ? {
-        id: alive[0].id, name: alive[0].name, color: alive[0].color,
+      winner: winner ? {
+        id: winner.id, name: winner.name, color: winner.color,
       } : null,
       players: getPlayersArray(lobby),
+      round: lobby.round,
+      maxRounds: lobby.maxRounds,
+      scores: getScoresObject(lobby),
+      isFinalRound,
+      matchWinner,
     });
-    // Clean up lobby after a delay
-    setTimeout(() => {
-      resetLobby(lobby);
-    }, 5000);
+
+    if (!isFinalRound) {
+      // Auto-start next round after delay
+      setTimeout(() => {
+        if (lobby.sockets.size === 0) {
+          lobbies.delete(lobby.code);
+          return;
+        }
+        startGame(lobby);
+      }, 3000);
+    } else {
+      // Reset to lobby after all rounds
+      setTimeout(() => {
+        resetLobby(lobby);
+      }, 5000);
+    }
     return;
   }
 
@@ -413,23 +521,55 @@ function executeFire(lobby: Lobby, playerId: string) {
     return;
   }
 
-  const { points, impactX, impactY } = computeTrajectory(
-    player.x, player.y, player.angle, player.power,
-    lobby.wind, lobby.terrain, player.facingRight
-  );
+  const weaponDef = WEAPONS[player.weapon] || WEAPONS.standard;
+  const allTrajectories: { points: number[][]; impactX: number; impactY: number }[] = [];
+  const totalDamages = new Map<string, number>();
 
-  let damages: Map<string, number> = new Map();
-  if (impactX >= 0) {
-    // Destroy terrain
-    destroyTerrain(lobby.terrain, impactX, impactY, EXPLOSION_RADIUS);
-    // Calculate damage
-    damages = calculateDamage(lobby.players, impactX, impactY, playerId);
-    // Update tank y positions (they may have fallen into craters)
-    for (const [, p] of lobby.players) {
-      if (p.hp > 0) {
-        const col = Math.min(CANVAS_W - 1, Math.max(0, Math.floor(p.x)));
-        p.y = lobby.terrain[col];
+  if (weaponDef.projectiles === 1) {
+    // Single projectile
+    const traj = computeTrajectory(
+      player.x, player.y, player.angle, player.power,
+      lobby.wind, lobby.terrain, player.facingRight
+    );
+    allTrajectories.push(traj);
+
+    if (traj.impactX >= 0) {
+      destroyTerrain(lobby.terrain, traj.impactX, traj.impactY, weaponDef.radius);
+      const damages = calculateDamage(lobby.players, traj.impactX, traj.impactY, playerId, weaponDef.radius, weaponDef.damage);
+      for (const [id, dmg] of damages) {
+        totalDamages.set(id, (totalDamages.get(id) || 0) + dmg);
       }
+    }
+  } else {
+    // Multi-projectile (spread)
+    const offsets = [];
+    for (let i = 0; i < weaponDef.projectiles; i++) {
+      offsets.push((i - Math.floor(weaponDef.projectiles / 2)) * weaponDef.spreadAngle);
+    }
+
+    for (const offset of offsets) {
+      const adjustedAngle = player.angle + offset * 0.5;
+      const traj = computeTrajectory(
+        player.x, player.y, adjustedAngle, player.power,
+        lobby.wind, lobby.terrain, player.facingRight
+      );
+      allTrajectories.push(traj);
+
+      if (traj.impactX >= 0) {
+        destroyTerrain(lobby.terrain, traj.impactX, traj.impactY, weaponDef.radius);
+        const damages = calculateDamage(lobby.players, traj.impactX, traj.impactY, playerId, weaponDef.radius, weaponDef.damage);
+        for (const [id, dmg] of damages) {
+          totalDamages.set(id, (totalDamages.get(id) || 0) + dmg);
+        }
+      }
+    }
+  }
+
+  // Update tank y positions (they may have fallen into craters)
+  for (const [, p] of lobby.players) {
+    if (p.hp > 0) {
+      const col = Math.min(CANVAS_W - 1, Math.max(0, Math.floor(p.x)));
+      p.y = lobby.terrain[col];
     }
   }
 
@@ -438,17 +578,21 @@ function executeFire(lobby: Lobby, playerId: string) {
     playerId,
     angle: player.angle,
     power: player.power,
-    trajectory: points,
-    impactX,
-    impactY,
-    explosionRadius: EXPLOSION_RADIUS,
-    damages: Object.fromEntries(damages),
+    weapon: player.weapon,
+    trajectories: allTrajectories.map(t => ({
+      points: t.points,
+      impactX: t.impactX,
+      impactY: t.impactY,
+    })),
+    explosionRadius: weaponDef.radius,
+    damages: Object.fromEntries(totalDamages),
     terrain: lobby.terrain,
     players: getPlayersArray(lobby),
   });
 
   // Wait for animation before next turn
-  const animTime = Math.min(points.length * 16, 4000) + 800;
+  const longestTraj = Math.max(...allTrajectories.map(t => t.points.length));
+  const animTime = Math.min(longestTraj * 16, 4000) + 800;
   setTimeout(() => advanceTurn(lobby), animTime);
 }
 
@@ -467,21 +611,25 @@ function resetLobby(lobby: Lobby) {
     p.hp = STARTING_HP;
     p.angle = 45;
     p.power = 50;
+    p.weapon = 'standard';
   }
   lobby.phase = "waiting";
   lobby.terrain = [];
   lobby.turnOrder = [];
   lobby.currentTurnIndex = 0;
+  lobby.round = 0;
+  lobby.scores.clear();
   if (lobby.turnTimer) clearTimeout(lobby.turnTimer);
   lobby.turnTimer = null;
 
   if (lobby.sockets.size === 0) {
-    lobbies.delete(lobby.id);
+    lobbies.delete(lobby.code);
   } else {
     broadcast(lobby, {
       type: "lobby_state",
       players: getPlayersArray(lobby),
       phase: "waiting",
+      roomCode: lobby.code,
     });
   }
 }
@@ -492,7 +640,7 @@ function removePlayer(lobby: Lobby, playerId: string) {
 
   if (lobby.phase === "waiting") {
     if (lobby.sockets.size === 0) {
-      lobbies.delete(lobby.id);
+      lobbies.delete(lobby.code);
       return;
     }
     // Reassign host
@@ -504,6 +652,7 @@ function removePlayer(lobby: Lobby, playerId: string) {
       players: getPlayersArray(lobby),
       phase: "waiting",
       hostId: lobby.hostId,
+      roomCode: lobby.code,
     });
   } else if (lobby.phase === "playing") {
     broadcast(lobby, {
@@ -521,7 +670,7 @@ function removePlayer(lobby: Lobby, playerId: string) {
     const aliveHumans = Array.from(lobby.players.values()).filter(p => p.hp > 0 && !p.isAI);
     if (aliveHumans.length === 0 && lobby.sockets.size === 0) {
       if (lobby.turnTimer) clearTimeout(lobby.turnTimer);
-      lobbies.delete(lobby.id);
+      lobbies.delete(lobby.code);
     }
   }
 }
@@ -566,8 +715,9 @@ const server = Bun.serve({
           const name = (msg.name || "Player").slice(0, 16);
           data.name = name;
 
-          const lobby = findOrCreateLobby();
-          data.lobbyId = lobby.id;
+          const roomCode = msg.roomCode ? String(msg.roomCode).toUpperCase().slice(0, 4) : undefined;
+          const lobby = findOrCreateLobby(roomCode);
+          data.lobbyId = lobby.code;
 
           const colorIdx = lobby.players.size % TANK_COLORS.length;
           const player: Player = {
@@ -579,6 +729,7 @@ const server = Bun.serve({
             angle: 45, power: 50,
             isAI: false,
             facingRight: true,
+            weapon: 'standard',
           };
 
           lobby.players.set(data.id, player);
@@ -589,9 +740,10 @@ const server = Bun.serve({
           ws.send(JSON.stringify({
             type: "welcome",
             playerId: data.id,
-            lobbyId: lobby.id,
+            lobbyId: lobby.code,
             isHost: lobby.hostId === data.id,
             players: getPlayersArray(lobby),
+            roomCode: lobby.code,
           }));
 
           broadcast(lobby, {
@@ -599,6 +751,7 @@ const server = Bun.serve({
             players: getPlayersArray(lobby),
             phase: "waiting",
             hostId: lobby.hostId,
+            roomCode: lobby.code,
           }, data.id);
         }
 
@@ -626,6 +779,25 @@ const server = Bun.serve({
             angle: player.angle,
             power: player.power,
           }, data.id);
+        }
+
+        else if (msg.type === "set_weapon") {
+          const lobby = lobbies.get(data.lobbyId);
+          if (!lobby || lobby.phase !== "playing") return;
+          const currentId = lobby.turnOrder[lobby.currentTurnIndex];
+          if (currentId !== data.id) return;
+
+          const player = lobby.players.get(data.id);
+          if (!player) return;
+          const weaponName = String(msg.weapon || 'standard');
+          if (WEAPONS[weaponName]) {
+            player.weapon = weaponName;
+            broadcast(lobby, {
+              type: "weapon_update",
+              playerId: data.id,
+              weapon: weaponName,
+            });
+          }
         }
 
         else if (msg.type === "fire") {
