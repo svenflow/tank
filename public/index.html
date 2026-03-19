@@ -29,15 +29,22 @@
     background-clip: text;
     color: transparent;
   }
+  #game-wrapper {
+    width: 100%;
+    max-width: 800px;
+    padding: 0 8px;
+  }
   #game-container {
     position: relative;
     border: 2px solid #333;
     border-radius: 4px;
     background: #000;
+    width: 100%;
   }
   canvas {
     display: block;
-    image-rendering: pixelated;
+    width: 100%;
+    height: auto;
   }
   #ui-bar {
     display: flex;
@@ -48,7 +55,7 @@
     border: 2px solid #333;
     border-top: none;
     border-radius: 0 0 4px 4px;
-    width: 800px;
+    width: 100%;
     font-size: 0.55rem;
     flex-wrap: wrap;
   }
@@ -89,7 +96,7 @@
     margin-left: auto;
   }
   #status-bar {
-    width: 800px;
+    width: 100%;
     padding: 6px 16px;
     background: #0d0d1a;
     border: 2px solid #333;
@@ -100,6 +107,42 @@
     display: flex;
     justify-content: space-between;
   }
+  /* Weapon selector */
+  #weapon-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: #111;
+    border: 2px solid #333;
+    border-top: none;
+    width: 100%;
+    font-size: 0.45rem;
+  }
+  #weapon-bar label {
+    color: #888;
+    font-size: 0.45rem;
+  }
+  .weapon-btn {
+    background: #222;
+    color: #888;
+    border: 1px solid #444;
+    padding: 4px 10px;
+    font-family: inherit;
+    font-size: 0.45rem;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .weapon-btn:hover:not(:disabled) { border-color: #4ade80; color: #ccc; }
+  .weapon-btn.active { background: #4ade80; color: #0a0a1a; border-color: #4ade80; font-weight: bold; }
+  .weapon-btn:disabled { cursor: default; opacity: 0.4; }
+  .weapon-btn .key-hint {
+    color: #666;
+    font-size: 0.35rem;
+    margin-left: 4px;
+  }
+  .weapon-btn.active .key-hint { color: #0a0a1a; }
   /* Lobby overlay */
   #overlay {
     position: fixed;
@@ -120,6 +163,7 @@
     max-width: 400px;
     width: 90%;
   }
+  .overlay-box.hidden { display: none; }
   .overlay-box h2 {
     font-size: 0.9rem;
     margin-bottom: 20px;
@@ -150,6 +194,45 @@
     font-weight: bold;
   }
   .overlay-box button:hover { background: #22c55e; }
+  .overlay-box button.secondary {
+    background: transparent;
+    color: #60a5fa;
+    border: 2px solid #60a5fa;
+  }
+  .overlay-box button.secondary:hover { background: rgba(96,165,250,0.1); }
+  .join-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 8px;
+  }
+  #code-input-group {
+    display: none;
+    margin-top: 12px;
+  }
+  #code-input {
+    font-size: 1rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    max-width: 160px;
+    margin: 0 auto 12px;
+  }
+  .room-code-display {
+    background: #0a0a1a;
+    border: 2px solid #4ade80;
+    border-radius: 6px;
+    padding: 12px 24px;
+    font-size: 1.4rem;
+    letter-spacing: 0.3em;
+    color: #4ade80;
+    margin: 12px 0;
+    display: inline-block;
+  }
+  .room-code-label {
+    font-size: 0.45rem;
+    color: #888;
+    margin-bottom: 4px;
+  }
   .player-list {
     margin: 16px 0;
     text-align: left;
@@ -199,6 +282,14 @@
     z-index: 50;
   }
   .winner-overlay .name { font-size: 1.2rem; margin: 12px 0; }
+  .winner-overlay .scores-list {
+    font-size: 0.5rem;
+    margin: 12px 0;
+    text-align: left;
+  }
+  .winner-overlay .scores-list div {
+    padding: 3px 0;
+  }
   .winner-overlay button {
     margin-top: 16px;
     background: #4ade80;
@@ -215,6 +306,7 @@
 <body>
 <h1>TANK WARS</h1>
 
+<div id="game-wrapper">
 <div id="game-container">
   <canvas id="canvas" width="800" height="600"></canvas>
   <div id="chat-log"></div>
@@ -224,7 +316,7 @@
   <div class="control-group">
     <label>ANGLE</label>
     <input type="range" id="angle-slider" min="5" max="175" value="45" step="1">
-    <span class="value" id="angle-val">45°</span>
+    <span class="value" id="angle-val">45&deg;</span>
   </div>
   <div class="control-group">
     <label>POWER</label>
@@ -235,21 +327,38 @@
   <div id="wind-display">WIND: ---</div>
 </div>
 
+<div id="weapon-bar">
+  <label>WEAPON:</label>
+  <button class="weapon-btn active" data-weapon="standard" id="weapon-standard">STD<span class="key-hint">[1]</span></button>
+  <button class="weapon-btn" data-weapon="big" id="weapon-big">BIG<span class="key-hint">[2]</span></button>
+  <button class="weapon-btn" data-weapon="spread" id="weapon-spread">SPREAD<span class="key-hint">[3]</span></button>
+</div>
+
 <div id="status-bar">
   <span id="turn-info">Waiting for players...</span>
+  <span id="round-info"></span>
   <span id="alive-info"></span>
 </div>
+</div><!-- end game-wrapper -->
 
 <!-- Lobby overlay -->
 <div id="overlay">
   <div class="overlay-box" id="join-screen">
     <h2>TANK WARS</h2>
     <input type="text" id="name-input" placeholder="Enter your name" maxlength="16" autofocus>
-    <br>
-    <button id="join-btn">JOIN GAME</button>
+    <div class="join-buttons">
+      <button id="create-btn">CREATE ROOM</button>
+      <button id="join-btn" class="secondary">JOIN ROOM</button>
+    </div>
+    <div id="code-input-group">
+      <input type="text" id="code-input" placeholder="CODE" maxlength="4">
+      <button id="code-join-btn">JOIN</button>
+    </div>
   </div>
   <div class="overlay-box hidden" id="lobby-screen">
     <h2>WAITING FOR PLAYERS</h2>
+    <div class="room-code-label">ROOM CODE</div>
+    <div class="room-code-display" id="room-code-display">----</div>
     <div class="player-list" id="player-list"></div>
     <button id="start-btn" class="hidden">START GAME</button>
     <p style="font-size:0.45rem; color:#666; margin-top:12px">Waiting for host to start...</p>
@@ -264,13 +373,18 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = 800, H = 600;
+const GRAVITY = 400;
 
 // UI elements
 const overlay = document.getElementById('overlay');
 const joinScreen = document.getElementById('join-screen');
 const lobbyScreen = document.getElementById('lobby-screen');
 const nameInput = document.getElementById('name-input');
+const createBtn = document.getElementById('create-btn');
 const joinBtn = document.getElementById('join-btn');
+const codeInputGroup = document.getElementById('code-input-group');
+const codeInput = document.getElementById('code-input');
+const codeJoinBtn = document.getElementById('code-join-btn');
 const startBtn = document.getElementById('start-btn');
 const playerListEl = document.getElementById('player-list');
 const angleSlider = document.getElementById('angle-slider');
@@ -280,8 +394,10 @@ const powerVal = document.getElementById('power-val');
 const fireBtn = document.getElementById('fire-btn');
 const windDisplay = document.getElementById('wind-display');
 const turnInfo = document.getElementById('turn-info');
+const roundInfo = document.getElementById('round-info');
 const aliveInfo = document.getElementById('alive-info');
 const chatLog = document.getElementById('chat-log');
+const roomCodeDisplay = document.getElementById('room-code-display');
 
 // State
 let ws = null;
@@ -293,15 +409,34 @@ let wind = 0;
 let currentTurn = '';
 let phase = 'lobby'; // lobby, playing, animating, gameover
 let myTurn = false;
+let currentRoomCode = '';
+let selectedWeapon = 'standard';
+let currentRound = 0;
+let maxRounds = 3;
+let scores = {};
 
 // Animation state
 let animating = false;
-let animTrajectory = [];
+let animTrajectories = [];
 let animFrame = 0;
-let animImpact = null;
 let explosionFrame = -1;
-let explosionPos = null;
+let explosionPositions = [];
 const EXPLOSION_FRAMES = 20;
+
+// Deferred state: keep pre-fire state during animation
+let preFirePlayers = null; // players before fire impact
+let postFirePlayers = null; // players after fire impact
+let postFireTerrain = null; // terrain after crater
+let preFireTerrain = null; // terrain before crater
+let craterAnimFrame = -1;
+const CRATER_ANIM_FRAMES = 12;
+
+// Check URL hash for room code
+const hashCode = location.hash.slice(1).toUpperCase();
+if (hashCode && hashCode.length === 4) {
+  codeInput.value = hashCode;
+  codeInputGroup.style.display = 'block';
+}
 
 // ============================================================
 // WEBSOCKET
@@ -337,12 +472,15 @@ function handleMessage(msg) {
       myId = msg.playerId;
       isHost = msg.isHost;
       players = msg.players;
+      currentRoomCode = msg.roomCode || '';
+      location.hash = currentRoomCode;
       showLobby();
       break;
 
     case 'lobby_state':
       players = msg.players;
       if (msg.hostId) isHost = (msg.hostId === myId);
+      if (msg.roomCode) currentRoomCode = msg.roomCode;
       if (msg.phase === 'waiting') {
         phase = 'lobby';
         showLobby();
@@ -355,7 +493,12 @@ function handleMessage(msg) {
       players = msg.players;
       wind = msg.wind;
       currentTurn = msg.currentTurn;
+      currentRound = msg.round || 1;
+      maxRounds = msg.maxRounds || 3;
+      scores = msg.scores || {};
       phase = 'playing';
+      selectedWeapon = 'standard';
+      updateWeaponButtons();
       overlay.classList.add('hidden');
       removeWinnerOverlay();
       updateUI();
@@ -367,11 +510,16 @@ function handleMessage(msg) {
       wind = msg.wind;
       myTurn = (currentTurn === myId);
       phase = 'playing';
+      if (myTurn) {
+        selectedWeapon = 'standard';
+        updateWeaponButtons();
+        send({ type: 'set_weapon', weapon: 'standard' });
+      }
       updateUI();
       render();
       break;
 
-    case 'aim_update':
+    case 'aim_update': {
       const aimP = players.find(p => p.id === msg.playerId);
       if (aimP) {
         aimP.angle = msg.angle;
@@ -379,24 +527,47 @@ function handleMessage(msg) {
         render();
       }
       break;
+    }
+
+    case 'weapon_update': {
+      const wp = players.find(p => p.id === msg.playerId);
+      if (wp) wp.weapon = msg.weapon;
+      break;
+    }
 
     case 'fire':
-      players = msg.players;
+      // CRITICAL: Don't update players/terrain until animation completes
+      // This prevents tanks from dropping/dying before the projectile arrives
+      preFirePlayers = JSON.parse(JSON.stringify(players)); // snapshot before impact
+      preFireTerrain = terrain.slice(); // snapshot terrain before crater
+      postFirePlayers = msg.players;
+      postFireTerrain = msg.terrain;
       phase = 'animating';
       myTurn = false;
       fireBtn.disabled = true;
-      animateProjectile(msg.trajectory, msg.impactX, msg.impactY, msg.explosionRadius, () => {
-        terrain = msg.terrain;
-        players = msg.players;
-        render();
+      animateProjectiles(msg.trajectories, msg.explosionRadius, () => {
+        // Now animate the crater forming, THEN update positions
+        craterAnimFrame = 0;
+        animateCrater(() => {
+          players = postFirePlayers;
+          terrain = postFireTerrain;
+          preFirePlayers = null;
+          postFirePlayers = null;
+          preFireTerrain = null;
+          postFireTerrain = null;
+          render();
+        });
       });
       break;
 
     case 'game_over':
       phase = 'gameover';
       players = msg.players;
+      scores = msg.scores || {};
+      currentRound = msg.round || currentRound;
+      maxRounds = msg.maxRounds || maxRounds;
       render();
-      showWinner(msg.winner);
+      showWinner(msg.winner, msg.isFinalRound, msg.matchWinner, msg.scores);
       break;
 
     case 'player_left':
@@ -418,6 +589,7 @@ function showLobby() {
   overlay.classList.remove('hidden');
   joinScreen.classList.add('hidden');
   lobbyScreen.classList.remove('hidden');
+  roomCodeDisplay.textContent = currentRoomCode || '----';
   updatePlayerList();
 }
 
@@ -444,12 +616,17 @@ function updateUI() {
   powerSlider.disabled = !myTurn;
   fireBtn.disabled = !myTurn;
 
+  // Update weapon button disabled state
+  document.querySelectorAll('.weapon-btn').forEach(btn => {
+    btn.disabled = !myTurn;
+  });
+
   if (myTurn) {
     const me = players.find(p => p.id === myId);
     if (me) {
       angleSlider.value = me.angle;
       powerSlider.value = me.power;
-      angleVal.textContent = me.angle + '°';
+      angleVal.textContent = me.angle + '\u00B0';
       powerVal.textContent = me.power + '%';
     }
   }
@@ -458,7 +635,7 @@ function updateUI() {
   if (wind === 0) {
     windDisplay.textContent = 'WIND: CALM';
   } else {
-    const arrow = wind > 0 ? '→'.repeat(Math.min(3, Math.ceil(Math.abs(wind) / 4))) : '←'.repeat(Math.min(3, Math.ceil(Math.abs(wind) / 4)));
+    const arrow = wind > 0 ? '\u2192'.repeat(Math.min(3, Math.ceil(Math.abs(wind) / 4))) : '\u2190'.repeat(Math.min(3, Math.ceil(Math.abs(wind) / 4)));
     windDisplay.textContent = `WIND: ${arrow} ${Math.abs(wind)}`;
   }
   windDisplay.style.color = Math.abs(wind) > 6 ? '#f472b6' : '#60a5fa';
@@ -470,9 +647,21 @@ function updateUI() {
       : `<span style="color:${currentPlayer.color}">${currentPlayer.name}</span>'s turn`;
   }
 
+  // Round info
+  if (currentRound > 0) {
+    roundInfo.textContent = `Round ${currentRound}/${maxRounds}`;
+    roundInfo.style.color = '#facc15';
+  }
+
   // Alive count
   const alive = players.filter(p => p.hp > 0).length;
   aliveInfo.textContent = `${alive} alive`;
+}
+
+function updateWeaponButtons() {
+  document.querySelectorAll('.weapon-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.weapon === selectedWeapon);
+  });
 }
 
 function addChatMessage(name, text) {
@@ -484,20 +673,61 @@ function addChatMessage(name, text) {
   while (chatLog.children.length > 20) chatLog.removeChild(chatLog.firstChild);
 }
 
-function showWinner(winner) {
+function showWinner(winner, isFinalRound, matchWinner, scores) {
   removeWinnerOverlay();
   const div = document.createElement('div');
   div.className = 'winner-overlay';
   div.id = 'winner-overlay';
-  if (winner) {
-    div.innerHTML = `
-      <div>🏆 WINNER 🏆</div>
-      <div class="name" style="color:${winner.color}">${winner.name}</div>
-      <div style="font-size:0.5rem; color:#888">Destroyed all enemies!</div>
-    `;
-  } else {
-    div.innerHTML = `<div>DRAW!</div><div style="font-size:0.5rem; color:#888; margin-top:8px">Everyone is dead...</div>`;
+
+  let scoresHtml = '';
+  if (scores) {
+    scoresHtml = '<div class="scores-list">';
+    // Sort by score descending
+    const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    for (const [id, score] of sorted) {
+      const p = players.find(pp => pp.id === id);
+      if (p) {
+        scoresHtml += `<div><span style="color:${p.color}">${p.name}</span>: ${score} win${score !== 1 ? 's' : ''}</div>`;
+      }
+    }
+    scoresHtml += '</div>';
   }
+
+  if (isFinalRound) {
+    // Match over
+    if (matchWinner) {
+      div.innerHTML = `
+        <div style="font-size:1rem; color:#facc15">MATCH WINNER</div>
+        <div class="name" style="color:${matchWinner.color}">${matchWinner.name}</div>
+        <div style="font-size:0.5rem; color:#888">Final Scores</div>
+        ${scoresHtml}
+      `;
+    } else {
+      div.innerHTML = `
+        <div style="font-size:1rem; color:#facc15">MATCH OVER</div>
+        <div style="font-size:0.5rem; color:#888; margin-top:8px">It's a tie!</div>
+        ${scoresHtml}
+      `;
+    }
+  } else {
+    // Round over, next round coming
+    if (winner) {
+      div.innerHTML = `
+        <div>ROUND ${currentRound} WINNER</div>
+        <div class="name" style="color:${winner.color}">${winner.name}</div>
+        ${scoresHtml}
+        <div style="font-size:0.45rem; color:#888; margin-top:8px">Next round starting...</div>
+      `;
+    } else {
+      div.innerHTML = `
+        <div>DRAW!</div>
+        <div style="font-size:0.5rem; color:#888; margin-top:8px">Everyone is dead...</div>
+        ${scoresHtml}
+        <div style="font-size:0.45rem; color:#888; margin-top:8px">Next round starting...</div>
+      `;
+    }
+  }
+
   document.getElementById('game-container').appendChild(div);
 }
 
@@ -507,15 +737,61 @@ function removeWinnerOverlay() {
 }
 
 // ============================================================
+// TRAJECTORY PREVIEW
+// ============================================================
+
+function computePreview() {
+  if (!myTurn || phase !== 'playing') return [];
+  const me = players.find(p => p.id === myId);
+  if (!me || me.hp <= 0) return [];
+
+  const angle = parseInt(angleSlider.value);
+  const power = parseInt(powerSlider.value);
+  const rad = (angle * Math.PI) / 180;
+  const dir = me.facingRight ? 1 : -1;
+  const speed = power * 8;
+  let vx = speed * Math.cos(rad) * dir;
+  let vy = -speed * Math.sin(rad);
+  let x = me.x;
+  let y = me.y - 15;
+  const windForce = wind * 20;
+  const dt = 1 / 60;
+  const points = [];
+
+  for (let i = 0; i < 3000 && points.length < 200; i++) {
+    points.push([x, y]);
+
+    vx += windForce * dt;
+    vy += GRAVITY * dt;
+    x += vx * dt;
+    y += vy * dt;
+
+    if (x < -50 || x > W + 50) break;
+    if (y < -800) break;
+
+    const col = Math.floor(x);
+    if (col >= 0 && col < W && terrain.length > 0 && y >= terrain[col]) {
+      points.push([x, terrain[col]]);
+      break;
+    }
+  }
+  return points;
+}
+
+// ============================================================
 // RENDERING
 // ============================================================
 
 function render() {
   ctx.clearRect(0, 0, W, H);
   drawSky();
-  if (terrain.length > 0) {
-    drawTerrain();
-    drawTanks();
+  // During animation, use pre-fire state so tanks don't jump/die early
+  const renderTerrain = (phase === 'animating' && preFireTerrain) ? preFireTerrain : terrain;
+  const renderPlayers = (phase === 'animating' && preFirePlayers) ? preFirePlayers : players;
+  if (renderTerrain.length > 0) {
+    drawTerrainArr(renderTerrain);
+    drawTrajectoryPreview();
+    drawTanksArr(renderPlayers);
   }
 }
 
@@ -538,12 +814,12 @@ function drawSky() {
   }
 }
 
-function drawTerrain() {
+function drawTerrainArr(t) {
   // Main terrain fill
   ctx.beginPath();
   ctx.moveTo(0, H);
-  for (let x = 0; x < terrain.length; x++) {
-    ctx.lineTo(x, terrain[x]);
+  for (let x = 0; x < t.length; x++) {
+    ctx.lineTo(x, t[x]);
   }
   ctx.lineTo(W, H);
   ctx.closePath();
@@ -557,17 +833,31 @@ function drawTerrain() {
 
   // Grass line on top
   ctx.beginPath();
-  ctx.moveTo(0, terrain[0]);
-  for (let x = 1; x < terrain.length; x++) {
-    ctx.lineTo(x, terrain[x]);
+  ctx.moveTo(0, t[0]);
+  for (let x = 1; x < t.length; x++) {
+    ctx.lineTo(x, t[x]);
   }
   ctx.strokeStyle = '#2d8f2d';
   ctx.lineWidth = 2;
   ctx.stroke();
 }
 
-function drawTanks() {
-  players.forEach(p => {
+function drawTrajectoryPreview() {
+  const preview = computePreview();
+  if (preview.length < 2) return;
+
+  for (let i = 0; i < preview.length; i += 3) {
+    const pt = preview[i];
+    const alpha = 0.15 + 0.15 * (1 - i / preview.length);
+    ctx.beginPath();
+    ctx.arc(pt[0], pt[1], 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(74, 222, 128, ${alpha})`;
+    ctx.fill();
+  }
+}
+
+function drawTanksArr(arr) {
+  arr.forEach(p => {
     if (p.hp <= 0) {
       drawDeadTank(p);
       return;
@@ -700,22 +990,28 @@ function lighten(hex, amount) {
 // ANIMATION
 // ============================================================
 
-function animateProjectile(trajectory, impactX, impactY, explosionRadius, onDone) {
+function animateProjectiles(trajectories, explosionRadius, onDone) {
   animating = true;
-  animTrajectory = trajectory;
+  animTrajectories = trajectories;
   animFrame = 0;
-  animImpact = impactX >= 0 ? { x: impactX, y: impactY, radius: explosionRadius } : null;
   explosionFrame = -1;
-  explosionPos = null;
+  explosionPositions = trajectories
+    .filter(t => t.impactX >= 0)
+    .map(t => ({ x: t.impactX, y: t.impactY, radius: explosionRadius }));
+
+  // Find longest trajectory
+  const maxLen = Math.max(...trajectories.map(t => t.points.length));
 
   // Skip frames for long trajectories to keep animation snappy
-  const skip = trajectory.length > 200 ? 3 : trajectory.length > 100 ? 2 : 1;
+  const skip = maxLen > 200 ? 3 : maxLen > 100 ? 2 : 1;
 
   function step() {
     if (explosionFrame >= 0) {
       // Explosion animation
       render();
-      drawExplosion(explosionPos.x, explosionPos.y, explosionPos.radius, explosionFrame / EXPLOSION_FRAMES);
+      for (const pos of explosionPositions) {
+        drawExplosion(pos.x, pos.y, pos.radius, explosionFrame / EXPLOSION_FRAMES);
+      }
       explosionFrame++;
       if (explosionFrame > EXPLOSION_FRAMES) {
         animating = false;
@@ -726,10 +1022,17 @@ function animateProjectile(trajectory, impactX, impactY, explosionRadius, onDone
       return;
     }
 
-    if (animFrame >= animTrajectory.length) {
-      // Trajectory done — start explosion if hit
-      if (animImpact) {
-        explosionPos = animImpact;
+    // Check if all trajectories are done
+    let allDone = true;
+    for (const traj of animTrajectories) {
+      if (animFrame < traj.points.length) {
+        allDone = false;
+        break;
+      }
+    }
+
+    if (allDone) {
+      if (explosionPositions.length > 0) {
         explosionFrame = 0;
         requestAnimationFrame(step);
       } else {
@@ -741,28 +1044,35 @@ function animateProjectile(trajectory, impactX, impactY, explosionRadius, onDone
 
     render();
 
-    // Draw trail
-    const trailLen = 6;
-    for (let i = Math.max(0, animFrame - trailLen); i <= animFrame; i++) {
-      const pt = animTrajectory[i];
-      const alpha = 1 - (animFrame - i) / (trailLen + 1);
-      const size = 2 + alpha * 2;
-      ctx.beginPath();
-      ctx.arc(pt[0], pt[1], size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 200, 50, ${alpha * 0.8})`;
-      ctx.fill();
-    }
+    // Draw all trajectories
+    for (const traj of animTrajectories) {
+      const frameIdx = Math.min(animFrame, traj.points.length - 1);
 
-    // Draw projectile
-    const pt = animTrajectory[animFrame];
-    ctx.beginPath();
-    ctx.arc(pt[0], pt[1], 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(pt[0], pt[1], 5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,200,50,0.3)';
-    ctx.fill();
+      // Draw trail
+      const trailLen = 6;
+      for (let i = Math.max(0, frameIdx - trailLen); i <= frameIdx; i++) {
+        const pt = traj.points[i];
+        const alpha = 1 - (frameIdx - i) / (trailLen + 1);
+        const size = 2 + alpha * 2;
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 200, 50, ${alpha * 0.8})`;
+        ctx.fill();
+      }
+
+      // Draw projectile
+      if (frameIdx < traj.points.length) {
+        const pt = traj.points[frameIdx];
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], 5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,200,50,0.3)';
+        ctx.fill();
+      }
+    }
 
     animFrame += skip;
     requestAnimationFrame(step);
@@ -816,23 +1126,102 @@ function drawExplosion(x, y, radius, progress) {
 }
 
 // ============================================================
+// CRATER ANIMATION — smooth terrain transition after explosion
+// ============================================================
+
+function animateCrater(onDone) {
+  if (!preFireTerrain || !postFireTerrain) {
+    onDone();
+    return;
+  }
+
+  let frame = 0;
+  const interpTerrain = preFireTerrain.slice();
+
+  function step() {
+    frame++;
+    const t = Math.min(1, frame / CRATER_ANIM_FRAMES);
+    // Ease-out cubic
+    const ease = 1 - Math.pow(1 - t, 3);
+
+    // Interpolate terrain
+    for (let x = 0; x < interpTerrain.length; x++) {
+      interpTerrain[x] = preFireTerrain[x] + (postFireTerrain[x] - preFireTerrain[x]) * ease;
+    }
+
+    // Also interpolate player y positions (tanks sliding down into craters)
+    const interpPlayers = JSON.parse(JSON.stringify(preFirePlayers));
+    for (let i = 0; i < interpPlayers.length; i++) {
+      const pre = preFirePlayers[i];
+      const post = postFirePlayers.find(p => p.id === pre.id);
+      if (post) {
+        interpPlayers[i].y = pre.y + (post.y - pre.y) * ease;
+        // Keep pre-fire HP during crater anim (damage already shown via explosion)
+        // But if they died, fade them at the end
+        if (post.hp <= 0 && t > 0.7) {
+          interpPlayers[i].hp = 0;
+        }
+      }
+    }
+
+    ctx.clearRect(0, 0, W, H);
+    drawSky();
+    drawTerrainArr(interpTerrain);
+    drawTanksArr(interpPlayers);
+
+    if (frame >= CRATER_ANIM_FRAMES) {
+      onDone();
+      return;
+    }
+    requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
+}
+
+// ============================================================
 // INPUT HANDLING
 // ============================================================
 
-joinBtn.onclick = () => {
+function doJoin(roomCode) {
   const name = nameInput.value.trim() || 'Player';
   connect();
-  // Wait for connection then join
   const waitForOpen = setInterval(() => {
     if (ws && ws.readyState === 1) {
       clearInterval(waitForOpen);
-      send({ type: 'join', name });
+      const msg = { type: 'join', name };
+      if (roomCode) msg.roomCode = roomCode;
+      send(msg);
     }
   }, 100);
+}
+
+createBtn.onclick = () => {
+  doJoin(null);
 };
 
+joinBtn.onclick = () => {
+  const isVisible = codeInputGroup.style.display === 'block';
+  codeInputGroup.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) codeInput.focus();
+};
+
+codeJoinBtn.onclick = () => {
+  const code = codeInput.value.trim().toUpperCase();
+  if (code.length !== 4) {
+    codeInput.style.borderColor = '#ef4444';
+    return;
+  }
+  codeInput.style.borderColor = '#333';
+  doJoin(code);
+};
+
+codeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') codeJoinBtn.click();
+});
+
 nameInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') joinBtn.click();
+  if (e.key === 'Enter') createBtn.click();
 });
 
 startBtn.onclick = () => {
@@ -840,7 +1229,7 @@ startBtn.onclick = () => {
 };
 
 angleSlider.oninput = () => {
-  angleVal.textContent = angleSlider.value + '°';
+  angleVal.textContent = angleSlider.value + '\u00B0';
   if (myTurn) {
     const me = players.find(p => p.id === myId);
     if (me) me.angle = parseInt(angleSlider.value);
@@ -867,10 +1256,20 @@ fireBtn.onclick = () => {
   }
 };
 
+// Weapon buttons
+document.querySelectorAll('.weapon-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!myTurn) return;
+    selectedWeapon = btn.dataset.weapon;
+    updateWeaponButtons();
+    send({ type: 'set_weapon', weapon: selectedWeapon });
+  });
+});
+
 // Keyboard controls
 document.addEventListener('keydown', (e) => {
   if (!myTurn || phase !== 'playing') return;
-  if (document.activeElement === nameInput) return;
+  if (document.activeElement === nameInput || document.activeElement === codeInput) return;
 
   switch (e.key) {
     case 'ArrowLeft':
@@ -895,6 +1294,24 @@ document.addEventListener('keydown', (e) => {
       break;
     case ' ':
       fireBtn.click();
+      e.preventDefault();
+      break;
+    case '1':
+      selectedWeapon = 'standard';
+      updateWeaponButtons();
+      send({ type: 'set_weapon', weapon: selectedWeapon });
+      e.preventDefault();
+      break;
+    case '2':
+      selectedWeapon = 'big';
+      updateWeaponButtons();
+      send({ type: 'set_weapon', weapon: selectedWeapon });
+      e.preventDefault();
+      break;
+    case '3':
+      selectedWeapon = 'spread';
+      updateWeaponButtons();
+      send({ type: 'set_weapon', weapon: selectedWeapon });
       e.preventDefault();
       break;
   }
