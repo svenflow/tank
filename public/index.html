@@ -31,7 +31,7 @@
   }
   #game-wrapper {
     width: 100%;
-    max-width: 800px;
+    max-width: 1000px;
     padding: 0 8px;
   }
   #game-container {
@@ -309,7 +309,7 @@
 
 <div id="game-wrapper">
 <div id="game-container">
-  <canvas id="canvas" width="800" height="600"></canvas>
+  <canvas id="canvas" width="1000" height="750"></canvas>
   <div id="chat-log"></div>
 </div>
 
@@ -373,7 +373,7 @@
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = 800, H = 600;
+const W = 1000, H = 750;
 const GRAVITY = 400;
 
 // UI elements
@@ -799,8 +799,8 @@ function render() {
   const renderPlayers = (phase === 'animating' && preFirePlayers) ? preFirePlayers : players;
   if (renderTerrain.length > 0) {
     drawTerrainArr(renderTerrain);
-    drawTrajectoryPreview();
     drawTanksArr(renderPlayers);
+    drawWindsock();
   }
 }
 
@@ -821,6 +821,69 @@ function drawSky() {
     const sy = ((i * 97 + 13) % (H * 0.4));
     ctx.fillRect(sx, sy, 1, 1);
   }
+}
+
+function drawWindsock() {
+  // Draw a windsock/flag near top-right of canvas showing wind direction + strength
+  const poleX = W - 60;
+  const poleTop = 20;
+  const poleBottom = 55;
+  const poleHeight = poleBottom - poleTop;
+
+  // Pole
+  ctx.beginPath();
+  ctx.moveTo(poleX, poleTop);
+  ctx.lineTo(poleX, poleBottom);
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Pole cap (small circle)
+  ctx.beginPath();
+  ctx.arc(poleX, poleTop, 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#aaa';
+  ctx.fill();
+
+  // Flag/sock - length and direction based on wind
+  const maxLen = 30;
+  const strength = Math.min(1, Math.abs(wind) / 10);
+  const sockLen = 8 + strength * maxLen;
+  const dir = wind === 0 ? 0 : (wind > 0 ? 1 : -1);
+
+  // Sock hangs down when no wind, blows horizontal in strong wind
+  const droop = (1 - strength) * 12; // vertical droop when calm
+
+  // Draw 3 tapered segments (classic windsock stripes)
+  const segments = 5;
+  const colors = ['#dc2626', '#fff', '#dc2626', '#fff', '#dc2626'];
+  const segLen = sockLen / segments;
+
+  for (let i = 0; i < segments; i++) {
+    const t0 = i / segments;
+    const t1 = (i + 1) / segments;
+    // Taper from wide at pole to narrow at tip
+    const w0 = 6 * (1 - t0 * 0.6);
+    const w1 = 6 * (1 - t1 * 0.6);
+    const x0 = poleX + dir * t0 * sockLen;
+    const x1 = poleX + dir * t1 * sockLen;
+    const y0 = poleTop + 2 + droop * t0 * t0;
+    const y1 = poleTop + 2 + droop * t1 * t1;
+
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 - w0 / 2);
+    ctx.lineTo(x1, y1 - w1 / 2);
+    ctx.lineTo(x1, y1 + w1 / 2);
+    ctx.lineTo(x0, y0 + w0 / 2);
+    ctx.closePath();
+    ctx.fillStyle = wind === 0 ? '#666' : colors[i];
+    ctx.fill();
+  }
+
+  // Wind speed text below pole
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = Math.abs(wind) > 6 ? '#f472b6' : '#60a5fa';
+  ctx.fillText(wind === 0 ? 'CALM' : `${Math.abs(wind)}`, poleX, poleBottom + 10);
 }
 
 function drawTerrainArr(t) {
@@ -947,7 +1010,7 @@ function drawDeadTank(p) {
 
 function drawHPBar(p) {
   const x = p.x;
-  const y = p.y - 22;
+  const y = p.y + 6; // Below tank treads
   const w = 30;
   const h = 4;
   const pct = p.hp / 100;

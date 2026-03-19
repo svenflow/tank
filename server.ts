@@ -13,8 +13,8 @@ import { join } from "path";
 import type { ServerWebSocket } from "bun";
 
 const PORT = parseInt(process.env.PORT || "8776");
-const CANVAS_W = 800;
-const CANVAS_H = 600;
+const CANVAS_W = 1000;
+const CANVAS_H = 750;
 const MAX_PLAYERS = 6;
 const TURN_TIMEOUT = 30_000;
 const AI_DELAY = 1200;
