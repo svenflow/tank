@@ -1013,15 +1013,26 @@ function drawTank(p) {
   ctx.lineTo(bx, by);
   ctx.stroke();
 
-  // Highlight if current turn
+  // Highlight current turn — glowing underline below tank
   if (p.id === currentTurn && phase === 'playing') {
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
+    const uw = 28; // underline width
+    const uy = y + 12; // below HP bar
+    // Glow
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(x, y - 8, 22, 0, Math.PI * 2);
+    ctx.moveTo(x - uw / 2, uy);
+    ctx.lineTo(x + uw / 2, uy);
     ctx.stroke();
-    ctx.setLineDash([]);
+    // Small chevron/arrow
+    ctx.beginPath();
+    ctx.moveTo(x - 4, uy + 4);
+    ctx.lineTo(x, uy + 7);
+    ctx.lineTo(x + 4, uy + 4);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
   }
 }
 
