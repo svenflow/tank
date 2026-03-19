@@ -45,6 +45,7 @@
     display: block;
     width: 100%;
     height: auto;
+    image-rendering: pixelated;
   }
   #ui-bar {
     display: flex;
@@ -511,9 +512,9 @@ function handleMessage(msg) {
       myTurn = (currentTurn === myId);
       phase = 'playing';
       if (myTurn) {
+        // Reset weapon selection visually but don't race with user input
         selectedWeapon = 'standard';
         updateWeaponButtons();
-        send({ type: 'set_weapon', weapon: 'standard' });
       }
       updateUI();
       render();
@@ -572,6 +573,14 @@ function handleMessage(msg) {
 
     case 'player_left':
       players = msg.players;
+      // Also update deferred state if we're mid-animation
+      if (postFirePlayers) {
+        postFirePlayers = msg.players;
+      }
+      if (preFirePlayers) {
+        // Remove from pre-fire snapshot too
+        preFirePlayers = preFirePlayers.filter(p => msg.players.some(mp => mp.id === p.id));
+      }
       render();
       break;
 
