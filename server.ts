@@ -325,27 +325,21 @@ function getScoresObject(lobby: Lobby): Record<string, number> {
 
 // --- Game Flow ---
 function startGame(lobby: Lobby) {
-  // Fill empty slots with AI
-  const humanCount = lobby.players.size;
-  if (humanCount < 2) {
-    const aiCount = 2 - humanCount; // At least 2 players
-    for (let i = 0; i < aiCount; i++) {
-      const aiId = `ai_${Date.now()}_${i}`;
-      const colorIdx = lobby.players.size % TANK_COLORS.length;
-      const ai: Player = {
-        id: aiId,
-        name: AI_NAMES[i % AI_NAMES.length],
-        color: TANK_COLORS[colorIdx],
-        x: 0, y: 0,
-        hp: STARTING_HP,
-        angle: 45, power: 50,
-        isAI: true,
-        facingRight: true,
-        weapon: 'standard',
-      };
-      lobby.players.set(aiId, ai);
-    }
-  }
+  // Always add exactly 1 AI opponent
+  const aiId = `ai_${Date.now()}_0`;
+  const colorIdx = lobby.players.size % TANK_COLORS.length;
+  const ai: Player = {
+    id: aiId,
+    name: AI_NAMES[Math.floor(Math.random() * AI_NAMES.length)],
+    color: TANK_COLORS[colorIdx],
+    x: 0, y: 0,
+    hp: STARTING_HP,
+    angle: 45, power: 50,
+    isAI: true,
+    facingRight: true,
+    weapon: 'standard',
+  };
+  lobby.players.set(aiId, ai);
 
   // Initialize scores for all players if first round
   if (lobby.round === 0) {
@@ -725,8 +719,8 @@ const server = Bun.serve({
           const lobby = findOrCreateLobby(roomCode);
           data.lobbyId = lobby.code;
 
-          // If game is in progress, try to replace an AI player
-          if (lobby.phase === "playing") {
+          // If game is in progress, try to replace an AI or drop in as new player
+          if (lobby.phase === "playing" && lobby.players.size < MAX_PLAYERS) {
             const aiEntry = Array.from(lobby.players.entries()).find(([, p]) => p.isAI && p.hp > 0);
             if (aiEntry) {
               const [aiId, aiPlayer] = aiEntry;
@@ -755,37 +749,76 @@ const server = Bun.serve({
               const aiScore = lobby.scores.get(aiId) || 0;
               lobby.scores.delete(aiId);
               lobby.scores.set(data.id, aiScore);
+            } else {
+              // No AI to replace — drop in as new player
+              const colorIdx = lobby.players.size % TANK_COLORS.length;
+              // Find a clear spot on terrain
+              const existingXs = Array.from(lobby.players.values()).map(p => p.x);
+              let bestX = CANVAS_W / 2;
+              let bestGap = 0;
+              // Find the largest gap between existing players
+              const sortedXs = [...existingXs, 0, CANVAS_W].sort((a, b) => a - b);
+              for (let i = 0; i < sortedXs.length - 1; i++) {
+                const gap = sortedXs[i + 1] - sortedXs[i];
+                if (gap > bestGap) {
+                  bestGap = gap;
+                  bestX = Math.round(sortedXs[i] + gap / 2);
+                }
+              }
+              bestX = Math.max(30, Math.min(CANVAS_W - 30, bestX));
+              const col = Math.min(CANVAS_W - 1, Math.max(0, bestX));
+              const centerX = CANVAS_W / 2;
 
-              ws.send(JSON.stringify({
-                type: "welcome",
-                playerId: data.id,
-                lobbyId: lobby.code,
-                isHost: lobby.hostId === data.id,
-                players: getPlayersArray(lobby),
-                roomCode: lobby.code,
-              }));
+              const newPlayer: Player = {
+                id: data.id,
+                name,
+                color: TANK_COLORS[colorIdx],
+                x: bestX,
+                y: lobby.terrain[col],
+                hp: STARTING_HP,
+                angle: 45, power: 50,
+                isAI: false,
+                facingRight: bestX < centerX,
+                weapon: 'standard',
+              };
+              lobby.players.set(data.id, newPlayer);
+              lobby.sockets.set(data.id, ws);
+              if (!lobby.hostId) lobby.hostId = data.id;
 
-              // Send full game state to the new player
-              ws.send(JSON.stringify({
-                type: "game_start",
-                terrain: lobby.terrain,
-                players: getPlayersArray(lobby),
-                wind: lobby.wind,
-                currentTurn: lobby.turnOrder[lobby.currentTurnIndex],
-                round: lobby.round,
-                maxRounds: lobby.maxRounds,
-                scores: Object.fromEntries(lobby.scores),
-              }));
-
-              // Tell everyone about updated players
-              broadcast(lobby, {
-                type: "player_joined",
-                players: getPlayersArray(lobby),
-              }, data.id);
-              return;
+              // Add to turn order (insert after current turn)
+              lobby.turnOrder.push(data.id);
+              lobby.scores.set(data.id, 0);
             }
-            // No AI to replace, can't join mid-game
-            ws.send(JSON.stringify({ type: "error", message: "Game in progress, no AI slot available" }));
+
+            ws.send(JSON.stringify({
+              type: "welcome",
+              playerId: data.id,
+              lobbyId: lobby.code,
+              isHost: lobby.hostId === data.id,
+              players: getPlayersArray(lobby),
+              roomCode: lobby.code,
+            }));
+
+            // Send full game state to the new player
+            ws.send(JSON.stringify({
+              type: "game_start",
+              terrain: lobby.terrain,
+              players: getPlayersArray(lobby),
+              wind: lobby.wind,
+              currentTurn: lobby.turnOrder[lobby.currentTurnIndex],
+              round: lobby.round,
+              maxRounds: lobby.maxRounds,
+              scores: Object.fromEntries(lobby.scores),
+            }));
+
+            // Tell everyone about updated players
+            broadcast(lobby, {
+              type: "player_joined",
+              players: getPlayersArray(lobby),
+            }, data.id);
+            return;
+          } else if (lobby.phase === "playing") {
+            ws.send(JSON.stringify({ type: "error", message: "Game is full" }));
             return;
           }
 
