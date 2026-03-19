@@ -260,7 +260,7 @@ function findOrCreateLobby(roomCode?: string): Lobby {
         return existing;
       }
       if (existing.phase === "playing") {
-        return existing; // join handler will try AI replacement
+        return existing; // join handler will try AI replacement or drop-in
       }
     }
     // Create with this code if not found
@@ -268,7 +268,18 @@ function findOrCreateLobby(roomCode?: string): Lobby {
       return createLobby(roomCode);
     }
   }
-  // Create new with random code
+
+  // No room code — try to find any existing joinable game
+  for (const [, lobby] of lobbies) {
+    if (lobby.phase === "playing" && lobby.players.size < MAX_PLAYERS) {
+      return lobby; // join handler will handle AI replacement or drop-in
+    }
+    if (lobby.phase === "waiting" && lobby.players.size < MAX_PLAYERS) {
+      return lobby;
+    }
+  }
+
+  // No existing games — create new
   return createLobby(generateRoomCode());
 }
 
