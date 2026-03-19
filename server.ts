@@ -254,10 +254,16 @@ function computeAIShot(ai: Player, lobby: Lobby): { angle: number; power: number
 function findOrCreateLobby(roomCode?: string): Lobby {
   if (roomCode) {
     const existing = lobbies.get(roomCode);
-    if (existing && existing.phase === "waiting" && existing.players.size < MAX_PLAYERS) {
-      return existing;
+    if (existing) {
+      // Allow joining waiting lobbies or in-progress games (AI replacement handled in join handler)
+      if (existing.phase === "waiting" && existing.players.size < MAX_PLAYERS) {
+        return existing;
+      }
+      if (existing.phase === "playing") {
+        return existing; // join handler will try AI replacement
+      }
     }
-    // Create with this code if not found or not joinable
+    // Create with this code if not found
     if (!existing) {
       return createLobby(roomCode);
     }
@@ -719,6 +725,70 @@ const server = Bun.serve({
           const lobby = findOrCreateLobby(roomCode);
           data.lobbyId = lobby.code;
 
+          // If game is in progress, try to replace an AI player
+          if (lobby.phase === "playing") {
+            const aiEntry = Array.from(lobby.players.entries()).find(([, p]) => p.isAI && p.hp > 0);
+            if (aiEntry) {
+              const [aiId, aiPlayer] = aiEntry;
+              // Replace AI with human
+              const newPlayer: Player = {
+                id: data.id,
+                name,
+                color: aiPlayer.color,
+                x: aiPlayer.x, y: aiPlayer.y,
+                hp: aiPlayer.hp,
+                angle: aiPlayer.angle, power: aiPlayer.power,
+                isAI: false,
+                facingRight: aiPlayer.facingRight,
+                weapon: aiPlayer.weapon,
+              };
+              lobby.players.delete(aiId);
+              lobby.players.set(data.id, newPlayer);
+              lobby.sockets.set(data.id, ws);
+              if (!lobby.hostId || lobby.hostId.startsWith('ai_')) lobby.hostId = data.id;
+
+              // Update turn order
+              const aiTurnIdx = lobby.turnOrder.indexOf(aiId);
+              if (aiTurnIdx >= 0) lobby.turnOrder[aiTurnIdx] = data.id;
+
+              // Update scores
+              const aiScore = lobby.scores.get(aiId) || 0;
+              lobby.scores.delete(aiId);
+              lobby.scores.set(data.id, aiScore);
+
+              ws.send(JSON.stringify({
+                type: "welcome",
+                playerId: data.id,
+                lobbyId: lobby.code,
+                isHost: lobby.hostId === data.id,
+                players: getPlayersArray(lobby),
+                roomCode: lobby.code,
+              }));
+
+              // Send full game state to the new player
+              ws.send(JSON.stringify({
+                type: "game_start",
+                terrain: lobby.terrain,
+                players: getPlayersArray(lobby),
+                wind: lobby.wind,
+                currentTurn: lobby.turnOrder[lobby.currentTurnIndex],
+                round: lobby.round,
+                maxRounds: lobby.maxRounds,
+                scores: Object.fromEntries(lobby.scores),
+              }));
+
+              // Tell everyone about updated players
+              broadcast(lobby, {
+                type: "player_joined",
+                players: getPlayersArray(lobby),
+              }, data.id);
+              return;
+            }
+            // No AI to replace, can't join mid-game
+            ws.send(JSON.stringify({ type: "error", message: "Game in progress, no AI slot available" }));
+            return;
+          }
+
           const colorIdx = lobby.players.size % TANK_COLORS.length;
           const player: Player = {
             id: data.id,
@@ -753,6 +823,15 @@ const server = Bun.serve({
             hostId: lobby.hostId,
             roomCode: lobby.code,
           }, data.id);
+
+          // Auto-start: if this is the first player joining, auto-start after a short delay
+          if (msg.autoStart && lobby.phase === "waiting" && data.id === lobby.hostId) {
+            setTimeout(() => {
+              if (lobby.phase === "waiting") {
+                startGame(lobby);
+              }
+            }, 300);
+          }
         }
 
         else if (msg.type === "start_game") {

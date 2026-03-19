@@ -343,7 +343,7 @@
 </div><!-- end game-wrapper -->
 
 <!-- Lobby overlay -->
-<div id="overlay">
+<div id="overlay" class="hidden">
   <div class="overlay-box" id="join-screen">
     <h2>TANK WARS</h2>
     <input type="text" id="name-input" placeholder="Enter your name" maxlength="16" autofocus>
@@ -432,12 +432,31 @@ let preFireTerrain = null; // terrain before crater
 let craterAnimFrame = -1;
 const CRATER_ANIM_FRAMES = 12;
 
+// Random name generator
+const RANDOM_NAMES = ['Ace', 'Blaze', 'Cobra', 'Duke', 'Eagle', 'Falcon', 'Ghost', 'Hawk', 'Iron', 'Jet', 'Knox', 'Lynx', 'Maverick', 'Nitro', 'Onyx', 'Pyro', 'Raven', 'Storm', 'Titan', 'Viper', 'Wolf', 'Zephyr'];
+function randomName() {
+  return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
+}
+
 // Check URL hash for room code
 const hashCode = location.hash.slice(1).toUpperCase();
-if (hashCode && hashCode.length === 4) {
-  codeInput.value = hashCode;
-  codeInputGroup.style.display = 'block';
+
+// Auto-join on page load
+function autoJoin() {
+  const name = randomName();
+  nameInput.value = name;
+  connect();
+  const waitForOpen = setInterval(() => {
+    if (ws && ws.readyState === 1) {
+      clearInterval(waitForOpen);
+      const msg = { type: 'join', name, autoStart: true };
+      if (hashCode && hashCode.length === 4) msg.roomCode = hashCode;
+      send(msg);
+    }
+  }, 100);
 }
+
+autoJoin();
 
 // ============================================================
 // WEBSOCKET
@@ -451,7 +470,7 @@ function connect() {
   ws.onopen = () => console.log('Connected');
   ws.onclose = () => {
     console.log('Disconnected');
-    setTimeout(connect, 2000);
+    setTimeout(() => autoJoin(), 2000);
   };
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
@@ -475,7 +494,8 @@ function handleMessage(msg) {
       players = msg.players;
       currentRoomCode = msg.roomCode || '';
       location.hash = currentRoomCode;
-      showLobby();
+      // Don't show lobby — game auto-starts
+      overlay.classList.add('hidden');
       break;
 
     case 'lobby_state':
@@ -484,9 +504,26 @@ function handleMessage(msg) {
       if (msg.roomCode) currentRoomCode = msg.roomCode;
       if (msg.phase === 'waiting') {
         phase = 'lobby';
-        showLobby();
+        overlay.classList.add('hidden');
+        // Auto-restart: if we're host, start a new game
+        if (isHost) {
+          setTimeout(() => send({ type: 'start_game' }), 500);
+        }
       }
       updatePlayerList();
+      break;
+
+    case 'player_joined':
+      players = msg.players;
+      // Update deferred state if mid-animation
+      if (postFirePlayers) postFirePlayers = msg.players;
+      if (preFirePlayers) {
+        preFirePlayers = preFirePlayers.map(p => {
+          const updated = msg.players.find(mp => mp.x === p.x && mp.y === p.y && mp.color === p.color);
+          return updated || p;
+        });
+      }
+      render();
       break;
 
     case 'game_start':
@@ -1256,12 +1293,12 @@ function animateCrater(onDone) {
 // ============================================================
 
 function doJoin(roomCode) {
-  const name = nameInput.value.trim() || 'Player';
+  const name = nameInput.value.trim() || randomName();
   connect();
   const waitForOpen = setInterval(() => {
     if (ws && ws.readyState === 1) {
       clearInterval(waitForOpen);
-      const msg = { type: 'join', name };
+      const msg = { type: 'join', name, autoStart: true };
       if (roomCode) msg.roomCode = roomCode;
       send(msg);
     }
